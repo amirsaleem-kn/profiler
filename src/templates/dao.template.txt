@@ -1,0 +1,35 @@
+import { Database } from "../../database";
+
+export interface {{.InterfaceName}} {{.InterfaceSchema}}
+
+/**
+ * @class {{.ClassName}}
+ */
+class {{.ClassName}} {
+
+    public static LIST_QUERY = `{{.ListQuery}}`;
+
+    /**
+     * @author {{.Author}} ({{.Date}})
+     * @param { Database } db regular db connection
+     * @returns { Promise<number> }
+     */
+    public static insertOne(db: Database, payload: {{.InterfaceName}}): Promise<number> {
+        return {{.ClassName}}.insertMany(db, [payload]);
+    }
+
+    /**
+     * @author {{.Author}} ({{.Date}})
+     * @param { Database } db regular db connection
+     * @returns { Promise<number> }
+     */
+    public static async insertMany(db: Database, payload: {{.InterfaceName}}[]): Promise<number> {
+        const sql = `{{.InsertQuery}}`;
+        const values = []
+        const result = (await db.executeQuery(sql, values)) as { insertId: number };
+        return result.insertId;
+    }
+
+}
+
+export default {{.ClassName}};
