@@ -169,7 +169,7 @@ func getDaoInterface(spec *DaoSpec, authorSpec *AuthorSpec, columns []ColumnSche
 	str := "{ "
 
 	for _, elem := range columns {
-		str += "" + elem.COLUMN_NAME + ": " + elem.COLUMN_TYPE_TS + "; "
+		str += "" + elem.COLUMN_NAME + ": " + elem.COLUMN_TYPE_TS + ";\n "
 	}
 
 	str += " }"
@@ -188,7 +188,7 @@ func getFiltersModel(spec *DaoSpec, authorSpec *AuthorSpec, columns []ColumnSche
 	str := ""
 
 	for _, elem := range columns {
-		str += elem.COLUMN_NAME + ": { value: " + "\"" + elem.COLUMN_NAME_ALIAS + "" + " = ?" + "\"}, "
+		str += elem.COLUMN_NAME + ": { value: " + "\"" + elem.COLUMN_NAME_ALIAS + "" + " = ?" + "\"},\n "
 	}
 
 	return str
