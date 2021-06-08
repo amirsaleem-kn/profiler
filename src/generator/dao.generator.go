@@ -3,11 +3,11 @@ package generator
 import (
 	"database/sql"
 	"fmt"
-	"html/template"
 	"os"
 	"prof-filer/db"
 	"prof-filer/util"
 	"strings"
+	"text/template"
 )
 
 type DaoSpec struct {
@@ -19,11 +19,12 @@ type AuthorSpec struct {
 }
 
 type ColumnSchema struct {
-	COLUMN_NAME    string
-	COLUMN_TYPE    string
-	COLUMN_TYPE_TS string
-	IS_NULLABLE    string
-	COLUMN_DEFAULT string
+	COLUMN_NAME       string
+	COLUMN_NAME_ALIAS string
+	COLUMN_TYPE       string
+	COLUMN_TYPE_TS    string
+	IS_NULLABLE       string
+	COLUMN_DEFAULT    string
 }
 
 type DaoConfig struct {
@@ -34,6 +35,7 @@ type DaoConfig struct {
 	InterfaceSchema string
 	ListQuery       string
 	InsertQuery     string
+	InsertValues    string
 }
 
 // Dictionary to convert MYSQL data type to Typescript equivalant
@@ -54,9 +56,7 @@ var MYSQL_TO_TS_DICT = map[string]string{
 func GenerateDao(spec *DaoSpec, authorSpec *AuthorSpec) {
 	conn, err := db.Connection()
 
-	if err != nil {
-		panic(err)
-	}
+	util.HandleException(err)
 
 	fmt.Println("===========================================================================================")
 	fmt.Println("Generating DAO specifications for " + spec.Table + " for " + authorSpec.Author)
@@ -64,20 +64,28 @@ func GenerateDao(spec *DaoSpec, authorSpec *AuthorSpec) {
 
 	columns, err := listColumns(conn, spec)
 
-	if err != nil {
-		panic(err)
-	}
+	util.HandleException(err)
 
 	columnNames := make([]string, 0)
+	aliasedColumnNames := make([]string, 0)
 
 	for _, column := range columns {
 		columnNames = append(columnNames, column.COLUMN_NAME)
+		aliasedColumnNames = append(aliasedColumnNames, column.COLUMN_NAME_ALIAS)
 	}
 
-	listQuery := getListQuery(spec, authorSpec, columnNames)
-	insertQuery := getInsertMethod(spec, authorSpec, columnNames)
+	// Generates a SELECT query
+	listQuery := getListQuery(spec, authorSpec, aliasedColumnNames)
+
+	// Generates an INSERT query
+	insertQuery := getInsertQuery(spec, authorSpec, columnNames)
+	// Generates the payload map method
+	insertValues := getInsertValues(spec, authorSpec, aliasedColumnNames)
+
+	// generates Typescript compatible interface for the DAO insert
 	daoInterface := getDaoInterface(spec, authorSpec, columns)
 
+	// Template Configuration
 	config := DaoConfig{
 		Author:          authorSpec.Author,
 		Date:            util.GetCurrDate(),
@@ -86,31 +94,34 @@ func GenerateDao(spec *DaoSpec, authorSpec *AuthorSpec) {
 		InterfaceSchema: daoInterface,
 		ListQuery:       listQuery,
 		InsertQuery:     insertQuery,
+		InsertValues:    insertValues,
 	}
 
+	// Write DAO in output dir using a template file
 	WriteDaoUsingTemplate(&config)
 
 	fmt.Println("Your output has been saved")
 	fmt.Println("Happy Hacking!!")
 
+	// close the database connection
 	defer conn.Close()
 }
 
 // List table columns
 func listColumns(conn *sql.DB, spec *DaoSpec) ([]ColumnSchema, error) {
 	columns := make([]ColumnSchema, 0)
+	tableAlias := strings.ToLower(spec.Table[:1])
 
 	const sqlStatement = "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?"
 	data, err := conn.Query(sqlStatement, os.Getenv("MYSQL_DATABASE_NAME"), spec.Table)
 
-	if err != nil {
-		return columns, err
-	}
+	util.HandleException(err)
 
 	for data.Next() {
 		var cm ColumnSchema
 		data.Scan(&cm.COLUMN_NAME, &cm.COLUMN_TYPE, &cm.IS_NULLABLE, &cm.COLUMN_DEFAULT)
 		cm.COLUMN_NAME = util.ToCamelCase(cm.COLUMN_NAME)
+		cm.COLUMN_NAME_ALIAS = tableAlias + "." + cm.COLUMN_NAME
 		cm.COLUMN_TYPE_TS = MysqlTypesToTypescript(cm.COLUMN_TYPE)
 		columns = append(columns, cm)
 	}
@@ -121,22 +132,22 @@ func listColumns(conn *sql.DB, spec *DaoSpec) ([]ColumnSchema, error) {
 }
 
 // insert method generator
-func getInsertMethod(spec *DaoSpec, authorSpec *AuthorSpec, columns []string) string {
+func getInsertQuery(spec *DaoSpec, authorSpec *AuthorSpec, columns []string) string {
 	insertStmt := "INSERT INTO " + spec.Table + "(" + strings.Join(columns, ", ") + ") VALUES ?"
 	return insertStmt
 }
 
 // returns list query
-func getListQuery(spec *DaoSpec, authorSpec *AuthorSpec, columns []string) string {
+func getListQuery(spec *DaoSpec, authorSpec *AuthorSpec, aliasedColumnNames []string) string {
 	tableAlias := strings.ToLower(spec.Table[:1])
-
-	aliasedColumns := make([]string, 0)
-	for _, column := range columns {
-		aliasedColumns = append(aliasedColumns, tableAlias+"."+column)
-	}
-
-	listStmt := "SELECT " + strings.Join(aliasedColumns, ", ") + " FROM " + spec.Table + " " + tableAlias
+	listStmt := "SELECT " + strings.Join(aliasedColumnNames, ", ") + " FROM " + spec.Table + " " + tableAlias
 	return listStmt
+}
+
+// get Typescript compatible insert values
+func getInsertValues(spec *DaoSpec, authorSpec *AuthorSpec, aliasedColumnNames []string) string {
+	str := "[payload.map((p) => [" + strings.Join(aliasedColumnNames, ", ") + "])]"
+	return str
 }
 
 // returns Typescript compatible interfaces
@@ -152,13 +163,7 @@ func getDaoInterface(spec *DaoSpec, authorSpec *AuthorSpec, columns []ColumnSche
 	return str
 }
 
-func check(e error) {
-	if e != nil {
-		panic(e)
-	}
-}
-
-// MySQL
+// Converts MySQL datatypes to typescript types
 func MysqlTypesToTypescript(dataType string) string {
 	dt := strings.Split(dataType, "(")
 
@@ -177,18 +182,18 @@ func MysqlTypesToTypescript(dataType string) string {
 // Uses a template to write to a file
 func WriteDaoUsingTemplate(config *DaoConfig) {
 	cwd, err := os.Getwd()
-	check(err)
+	util.HandleException(err)
 	templatePath := cwd + "/templates/dao.template.txt"
 	t, err := template.ParseFiles(templatePath)
-	check(err)
+	util.HandleException(err)
 
 	outputFilePath := cwd + "/output/dao.ts"
 
 	f, err := os.Create(outputFilePath)
-	check(err)
+	util.HandleException(err)
 	defer f.Close()
 
 	err = t.Execute(f, config)
 
-	check(err)
+	util.HandleException(err)
 }
