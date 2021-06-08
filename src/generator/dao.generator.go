@@ -28,14 +28,19 @@ type ColumnSchema struct {
 }
 
 type DaoConfig struct {
-	ClassName       string
-	Author          string
-	Date            string
-	InterfaceName   string
-	InterfaceSchema string
-	ListQuery       string
-	InsertQuery     string
-	InsertValues    string
+	ClassName              string
+	Author                 string
+	Date                   string
+	InterfaceName          string
+	InterfaceSchema        string
+	MetaInterfaceName      string
+	MetaInterfaceSchema    string
+	FiltersInterfaceName   string
+	FiltersInterfaceSchema string
+	FILTERS_MODEL          string
+	ListQuery              string
+	InsertQuery            string
+	InsertValues           string
 }
 
 // Dictionary to convert MYSQL data type to Typescript equivalant
@@ -84,17 +89,26 @@ func GenerateDao(spec *DaoSpec, authorSpec *AuthorSpec) {
 
 	// generates Typescript compatible interface for the DAO insert
 	daoInterface := getDaoInterface(spec, authorSpec, columns)
+	// generates Typescript compatible interface for Filters
+	filtersInterface := getFiltersInterface(spec, authorSpec, columns)
+
+	// filters model
+	filtersModel := getFiltersModel(spec, authorSpec, columns)
 
 	// Template Configuration
 	config := DaoConfig{
-		Author:          authorSpec.Author,
-		Date:            util.GetCurrDate(),
-		ClassName:       spec.Table,
-		InterfaceName:   spec.Table + "DAO",
-		InterfaceSchema: daoInterface,
-		ListQuery:       listQuery,
-		InsertQuery:     insertQuery,
-		InsertValues:    insertValues,
+		Author:                 authorSpec.Author,
+		Date:                   util.GetCurrDate(),
+		ClassName:              spec.Table,
+		InterfaceName:          spec.Table + "DAO",
+		InterfaceSchema:        daoInterface,
+		MetaInterfaceName:      spec.Table + "DAOWithMeta",
+		FiltersInterfaceName:   spec.Table + "ListFilters",
+		FiltersInterfaceSchema: filtersInterface,
+		FILTERS_MODEL:          filtersModel,
+		ListQuery:              listQuery,
+		InsertQuery:            insertQuery,
+		InsertValues:           insertValues,
 	}
 
 	// Write DAO in output dir using a template file
@@ -159,6 +173,23 @@ func getDaoInterface(spec *DaoSpec, authorSpec *AuthorSpec, columns []ColumnSche
 	}
 
 	str += " }"
+
+	return str
+}
+
+// returns interface for Filters
+func getFiltersInterface(spec *DaoSpec, authorSpec *AuthorSpec, columns []ColumnSchema) string {
+	str := "{}"
+	return str
+}
+
+// returns model for filters
+func getFiltersModel(spec *DaoSpec, authorSpec *AuthorSpec, columns []ColumnSchema) string {
+	str := ""
+
+	for _, elem := range columns {
+		str += elem.COLUMN_NAME + ": { value: " + "\"" + elem.COLUMN_NAME_ALIAS + "" + " = ?" + "\"}, "
+	}
 
 	return str
 }

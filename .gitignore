@@ -2,3 +2,4 @@
 go.code-workspace
 main
 src/output/*
+.vscode
