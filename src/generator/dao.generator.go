@@ -218,7 +218,7 @@ func WriteDaoUsingTemplate(config *DaoConfig) {
 	t, err := template.ParseFiles(templatePath)
 	util.HandleException(err)
 
-	outputFilePath := cwd + "/output/dao.ts"
+	outputFilePath := cwd + "/output/" + config.ClassName + ".dao.ts"
 
 	f, err := os.Create(outputFilePath)
 	util.HandleException(err)
